@@ -1,0 +1,103 @@
+name: Build BindHosts-app
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout the repository
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Step 2: Get the GitHub release tag
+    - name: Get the GitHub release tag
+      id: get_tag
+      run: |
+        TAG=$(git describe --tags --abbrev=0)
+        echo "Release tag: $TAG"
+        echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+
+    # Step 3: Get the number of commits since the last release
+    - name: Get commit count for versionCode
+      id: get_commit_count
+      run: |
+        COMMIT_COUNT=$(git rev-list --count HEAD)
+        echo "Commit count: $COMMIT_COUNT"
+        echo "VERSION_CODE=$COMMIT_COUNT" >> $GITHUB_ENV
+
+    # Step 4: Write keystore to gradle.properties if it's set
+    - name: Write key
+      if: ${{ (github.event_name != 'pull_request') || github.ref_type == 'tag' }}
+      run: |
+        if [ ! -z "${{ secrets.KEYSTORE }}" ]; then
+          echo "Writing keystore file"
+          # Decode the base64 keystore into a file in the current directory
+          echo "${{ secrets.KEYSTORE }}" | base64 -d > key.jks
+
+          # Debugging: Check if the keystore file exists
+          if [ -f key.jks ]; then
+            echo "Keystore file successfully created"
+          else
+            echo "Keystore file was not created"
+            exit 1  # Fail the job if the keystore file doesn't exist
+          fi
+
+          # Write the keystore details to gradle.properties
+          echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> gradle.properties
+          echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> gradle.properties
+          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> gradle.properties
+          echo "KEYSTORE_FILE=key.jks" >> gradle.properties
+        fi
+
+        # Set environment variables for signing configuration
+        echo "KEYSTORE_FILE=$(pwd)/key.jks" >> $GITHUB_ENV
+        echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+        echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+        echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+
+    # Step 5: Setup Java
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 21
+
+    # Step 6: Setup Gradle
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    # Step 7: Setup Android SDK
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    # Step 8: Configure Gradle properties and build APK
+    - name: Build with Gradle
+      run: |
+        ./gradlew clean assembleRelease \
+        -PversionCode=${{ env.VERSION_CODE }} \
+        -PversionName=${{ env.RELEASE_TAG }} \
+        -Pandroid.nonTransitiveRClass=true
+
+    # Step 9: Rename the APK file to include the release tag
+    - name: Rename APK file
+      run: |
+        mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/BindHosts-app_${{ env.RELEASE_TAG }}.apk
+        echo "Renamed APK to BindHosts-app_${{ env.RELEASE_TAG }}.apk"
+
+    # Step 10: Upload APK as an artifact
+    - name: Upload APK as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: BindHosts-app-${{ env.RELEASE_TAG }}.apk
+        path: app/build/outputs/apk/release/BindHosts-app_${{ env.RELEASE_TAG }}.apk
+
+    # Step 11: Release APK to GitHub Releases
+    - name: Release APK to GitHub
+      uses: softprops/action-gh-release@v2
+      with:
+        files: app/build/outputs/apk/release/BindHosts-app_${{ env.RELEASE_TAG }}.apk
+        draft: false
+        prerelease: false
