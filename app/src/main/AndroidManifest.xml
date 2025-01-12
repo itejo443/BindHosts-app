@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+                     android:permissionGroup="android.permission-group.NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="com.itejo443.BINDHOSTS_NOTIFICATION_PERMISSION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Bindhosts"
+        tools:targetApi="35">
+
+        <service
+            android:name=".RunScriptTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_icon"
+            android:label="@string/my_default_tile_label"
+            android:theme="@style/Theme.Bindhosts"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <receiver android:name=".NotificationClickReceiver"
+                  android:enabled="true"
+                  android:exported="true"
+                  android:permission="com.itejo443.BINDHOSTS_NOTIFICATION_PERMISSION">
+            <intent-filter>
+                <action android:name="com.itejo443.BINDHOSTS_NOTIFICATION_CLICKED" />
+            </intent-filter>
+        </receiver>
+        
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="false"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>
+
+
