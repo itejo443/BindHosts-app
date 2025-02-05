@@ -81,6 +81,18 @@ class RunScriptTileService : TileService() {
                     "com.itejo443.BINDHOSTS_RUN_SCRIPT" -> {
                         checkAndUpdateBindHostsStatus()
                     }
+                    "com.itejo443.BINDHOSTS_OFF" -> {
+                        resetBindHosts()
+                        checkAndUpdateBindHostsStatus()
+                        killApp()
+                    }
+                    "com.itejo443.BINDHOSTS_UPDATE" -> {
+                        forceUpdate()
+                        checkAndUpdateBindHostsStatus()
+                    }
+                    "com.itejo443.BINDHOSTS_ON" -> {
+                        onClick()
+	              	}
                     "com.itejo443.RESTORE_TILE_STATE" -> {
                         restoreTileStateAndNotification()
                     }
@@ -112,6 +124,23 @@ class RunScriptTileService : TileService() {
 		    handleError(e, "Error while resetting bindhosts status")
        }
     }
+    
+    private fun killApp() {
+        try {
+	    	executeScript("am force-stop me.itejo443.bindhosts")
+        } catch (e: Exception) {
+		    handleError(e, "Error while quitting bindhosts")
+       }
+    }
+    
+    private fun forceUpdate() {
+		try {
+	    	executeScript("sh /data/adb/modules/bindhosts/bindhosts.sh --force-update")
+	    	checkAndUpdateBindHostsStatus()
+        } catch (e: Exception) {
+		    handleError(e, "Error while updating bindhosts")
+       }
+    }
 
     fun checkAndUpdateBindHostsStatus() {
         try {
@@ -125,13 +154,14 @@ class RunScriptTileService : TileService() {
             if (qsTile.state != newState) {
                 qsTile.state = newState
                 val currentTime = getCurrentTime()
-                qsTile.updateTile()
                 saveTileState(newState, currentTime)
+                qsTile.updateTile()
                 updateNotification(getLastToastMessage())
             } else {
-                updateNotification(getLastToastMessage())
+		    qsTile.state = newState
+            qsTile.updateTile()
+            updateNotification(getLastToastMessage())
             }
-
         } catch (e: Exception) {
             Log.e("checkAndUpdateBindHostsStatus", "Error checking bindhosts status", e)
             handleError(e, "Error checking bindhosts status")
@@ -180,7 +210,6 @@ class RunScriptTileService : TileService() {
         qsTile.state = Tile.STATE_INACTIVE
         qsTile.updateTile()
         showToast("Enable SU for BindHosts-app")
-        updateNotification(getLastToastMessage())
         saveTileState(qsTile.state, getCurrentTime())
     }
 
@@ -237,8 +266,8 @@ class RunScriptTileService : TileService() {
     
     private fun restoreTileStateAndNotification() {
         try {
-            val savedState = loadTileState()
-            qsTile.state = savedState.first
+            val (savedState) = loadTileState()
+            qsTile.state = savedState
             qsTile.updateTile()
             updateNotification(getLastToastMessage())
         } catch (e: Exception) {
@@ -249,10 +278,18 @@ class RunScriptTileService : TileService() {
     private fun createNotificationChannel() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(channelId, "Bindhosts Status", NotificationManager.IMPORTANCE_LOW)
-                channel.description = "Shows the current Bindhosts status"
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.createNotificationChannel(channel)
+                // Only create the channel if it hasn't been created yet
+                if (notificationManager.getNotificationChannel(channelId) == null) {
+                    val channel = NotificationChannel(
+                        channelId,
+                        "BindHosts Status",
+                        NotificationManager.IMPORTANCE_LOW
+                    ).apply {
+                        description = "Shows the current Bindhosts status"
+                    }
+                    notificationManager.createNotificationChannel(channel)
+                }
             }
         } catch (e: Exception) {
             Log.e("CreateNotificationError", "Failed to create notification channel", e)
@@ -278,6 +315,25 @@ class RunScriptTileService : TileService() {
 
             val pendingIntent = PendingIntent.getBroadcast(this, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+            // Create "Off" action intent
+            val offIntent = Intent(this, RunScriptTileService::class.java).apply {
+                action = "com.itejo443.BINDHOSTS_OFF"
+            }
+            
+            val offPendingIntent = PendingIntent.getService(this, 1, offIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            
+            // Create "Update" action intent
+            val updateIntent = Intent(this, RunScriptTileService::class.java).apply {
+                action = "com.itejo443.BINDHOSTS_UPDATE"
+            }
+            val updatePendingIntent = PendingIntent.getService(this, 2, updateIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            
+            // Create "On" action intent
+            val onIntent = Intent(this, RunScriptTileService::class.java).apply {
+                action = "com.itejo443.BINDHOSTS_ON"
+            }
+            val onPendingIntent = PendingIntent.getService(this, 3, onIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            
             val isLightStatusBar = isLightStatusBar(this)
             val notificationIcon = if (isLightStatusBar) R.drawable.ic_launcher_dark else R.drawable.ic_launcher_light
 
@@ -287,6 +343,9 @@ class RunScriptTileService : TileService() {
                 .setSmallIcon(notificationIcon)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setContentIntent(pendingIntent)
+                .addAction(R.drawable.ic_off,"Quit",offPendingIntent)
+                .addAction(R.drawable.ic_update,"Update",updatePendingIntent)
+                .addAction(R.drawable.ic_on,"Action",onPendingIntent)
                 .setOngoing(true)
                 .build()
 
@@ -299,6 +358,11 @@ class RunScriptTileService : TileService() {
         } catch (e: Exception) {
             Log.e("updateNotification", "Error updating notification", e)
         }
+    }
+    
+    private fun createActionPendingIntent(action: String, requestCode: Int): PendingIntent {
+        val intent = Intent(this, RunScriptTileService::class.java).apply { this.action = action }
+        return PendingIntent.getService(this, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     @Suppress("DEPRECATION")
